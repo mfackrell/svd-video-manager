@@ -26,11 +26,10 @@ def svd_video_manager(request):
     # Configuration for a 12-second video
     payload = {
         "input": {
-            "image_url": image_url,
-            "prompt": "",  # ADD THIS LINE
-            "motion_bucket_id": 127,
-            "fps": 12,
-            "num_frames": 144  # 12 seconds at 12 fps
+"input": {
+            "image": image_url,  # Changed from image_url to image
+            "prompt": "",        # Kept since the previous error required it
+            "index": 0
         }
     }
 
