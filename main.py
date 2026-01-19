@@ -27,6 +27,7 @@ def svd_video_manager(request):
     payload = {
         "input": {
             "image_url": image_url,
+            "prompt": "",  # ADD THIS LINE
             "motion_bucket_id": 127,
             "fps": 12,
             "num_frames": 144  # 12 seconds at 12 fps
