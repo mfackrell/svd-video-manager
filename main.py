@@ -26,7 +26,6 @@ def svd_video_manager(request):
     # Configuration for a 12-second video
     payload = {
         "input": {
-"input": {
             "image": image_url,  # Changed from image_url to image
             "prompt": "",        # Kept since the previous error required it
             "index": 0
