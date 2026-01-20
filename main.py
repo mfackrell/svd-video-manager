@@ -1,22 +1,46 @@
 import os
 import requests
+import uuid
 from functions_framework import http
+from google.cloud import storage
 
-RUNPOD_API_KEY = os.environ.get("RUNPOD_API_KEY")
-WAN22_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")  # reuse env var for now
+RUNPOD_API_KEY = os.environ["RUNPOD_API_KEY"]
+SVD_ENDPOINT_ID = os.environ["SVD_ENDPOINT_ID"]
+VIDEO_BUCKET = "ssm-video-engine-output"
+
+SELF_URL = "https://svd-video-manager-710616455963.us-central1.run.app"
+
+HEADERS = {
+    "Authorization": f"Bearer {RUNPOD_API_KEY}",
+    "Content-Type": "application/json"
+}
 
 @http
-def svd_video_manager(request):
-    body = request.get_json(silent=True) or {}
-    image_url = body.get("image_url")
+def svd_handler(request):
+    data = request.get_json(silent=True) or {}
 
+    if data.get("status") == "COMPLETED":
+        video_url = data["output"]["video"]
+
+        video = requests.get(video_url, stream=True)
+        video.raise_for_status()
+
+        client = storage.Client()
+        bucket = client.bucket(VIDEO_BUCKET)
+
+        filename = f"videos/{uuid.uuid4().hex}.mp4"
+        blob = bucket.blob(filename)
+        blob.upload_from_file(video.raw, content_type="video/mp4")
+
+        return {
+            "status": "complete",
+            "job_id": data.get("id"),
+            "gcs_url": f"https://storage.googleapis.com/{VIDEO_BUCKET}/{filename}"
+        }, 200
+
+    image_url = data.get("image_url")
     if not image_url:
-        return {"status": "error", "message": "Missing image_url"}, 400
-
-    headers = {
-        "Authorization": f"Bearer {RUNPOD_API_KEY}",
-        "Content-Type": "application/json"
-    }
+        return {"error": "Missing image_url"}, 400
 
     payload = {
         "input": {
@@ -27,23 +51,21 @@ def svd_video_manager(request):
             "cfg": 2.0,
             "width": 576,
             "height": 1024,
-            "length": 36,   # ~3s @ 12fps (fast test)
+            "length": 144,
             "steps": 10
-        }
+        },
+        "webhook": SELF_URL
     }
 
-    try:
-        submit_url = f"https://api.runpod.ai/v2/{WAN22_ENDPOINT_ID}/run"
-        res = requests.post(submit_url, headers=headers, json=payload, timeout=30)
-        res.raise_for_status()
+    res = requests.post(
+        f"https://api.runpod.ai/v2/{SVD_ENDPOINT_ID}/run",
+        headers=HEADERS,
+        json=payload,
+        timeout=30
+    )
+    res.raise_for_status()
 
-        job_id = res.json().get("id")
-
-        return {
-            "status": "submitted",
-            "job_id": job_id,
-            "status_url": f"https://api.runpod.ai/v2/{WAN22_ENDPOINT_ID}/status/{job_id}"
-        }, 202
-
-    except Exception as e:
-        return {"status": "error", "message": str(e)}, 500
+    return {
+        "status": "submitted",
+        "job_id": res.json()["id"]
+    }, 202
