@@ -3,6 +3,8 @@ import requests
 import uuid
 from functions_framework import http
 from google.cloud import storage
+import base64
+
 
 RUNPOD_API_KEY = os.environ["RUNPOD_API_KEY"]
 SVD_ENDPOINT_ID = os.environ["SVD_ENDPOINT_ID"]
@@ -20,17 +22,21 @@ def svd_video_manager(request):
     data = request.get_json(silent=True) or {}
 
     if data.get("status") == "COMPLETED":
-        video_url = data["output"]["video"]
+        video_base64 = data["output"]["video"]
+        
+        # Strip data URI prefix if present
+        if video_base64.startswith("data:"):
+            video_base64 = video_base64.split(",", 1)[1]
+        
+        video_bytes = base64.b64decode(video_base64)
 
-        video = requests.get(video_url, stream=True)
-        video.raise_for_status()
 
         client = storage.Client()
         bucket = client.bucket(VIDEO_BUCKET)
 
         filename = f"videos/{uuid.uuid4().hex}.mp4"
         blob = bucket.blob(filename)
-        blob.upload_from_file(video.raw, content_type="video/mp4")
+        blob.upload_from_string(video_bytes, content_type="video/mp4")
 
         return {
             "status": "complete",
