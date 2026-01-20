@@ -16,7 +16,7 @@ HEADERS = {
 }
 
 @http
-def svd_handler(request):
+def svd_video_manager(request):
     data = request.get_json(silent=True) or {}
 
     if data.get("status") == "COMPLETED":
