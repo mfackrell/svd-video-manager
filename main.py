@@ -4,6 +4,8 @@ import uuid
 from functions_framework import http
 from google.cloud import storage
 import base64
+import time
+
 
 
 RUNPOD_API_KEY = os.environ["RUNPOD_API_KEY"]
@@ -20,6 +22,7 @@ HEADERS = {
 @http
 def svd_video_manager(request):
     data = request.get_json(silent=True) or {}
+    wait = data.get("wait", True)
 
     if data.get("status") == "COMPLETED":
         video_base64 = data["output"]["video"]
@@ -60,7 +63,6 @@ def svd_video_manager(request):
             "length": 144,
             "steps": 10
         },
-        "webhook": SELF_URL
     }
 
     res = requests.post(
@@ -71,7 +73,41 @@ def svd_video_manager(request):
     )
     res.raise_for_status()
 
-    return {
-        "status": "submitted",
-        "job_id": res.json()["id"]
-    }, 202
+    job_id = res.json()["id"]
+    
+    # If async behavior is explicitly requested, return immediately
+    if not wait:
+        return {
+            "status": "submitted",
+            "job_id": job_id
+        }, 202
+    
+    # BLOCKING MODE — poll RunPod until completion
+    while True:
+        status_res = requests.get(
+            f"https://api.runpod.ai/v2/{SVD_ENDPOINT_ID}/status/{job_id}",
+            headers=HEADERS,
+            timeout=15
+        )
+        status_res.raise_for_status()
+        status_json = status_res.json()
+    
+        if status_json.get("status") == "COMPLETED":
+            # Re-enter the same handler with the completed payload
+            return svd_video_manager(
+                type(
+                    "Request",
+                    (),
+                    {"get_json": lambda self, silent=True: status_json}
+                )()
+            )
+    
+        if status_json.get("status") == "FAILED":
+            return {
+                "status": "failed",
+                "job_id": job_id,
+                "error": status_json
+            }, 500
+    
+        time.sleep(5)
+
