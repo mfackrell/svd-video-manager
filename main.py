@@ -93,20 +93,32 @@ def svd_video_manager(request):
         status_json = status_res.json()
     
         if status_json.get("status") == "COMPLETED":
-            # Re-enter the same handler with the completed payload
-            return svd_video_manager(
-                type(
-                    "Request",
-                    (),
-                    {"get_json": lambda self, silent=True: status_json}
-                )()
-            )
+            video_base64 = status_json["output"]["video"]
+        
+            if video_base64.startswith("data:"):
+                video_base64 = video_base64.split(",", 1)[1]
+        
+            video_bytes = base64.b64decode(video_base64)
+        
+            client = storage.Client()
+            bucket = client.bucket(VIDEO_BUCKET)
+        
+            filename = f"videos/{uuid.uuid4().hex}.mp4"
+            blob = bucket.blob(filename)
+            blob.upload_from_string(video_bytes, content_type="video/mp4")
+        
+            return {
+                "status": "complete",
+                "job_id": job_id,
+                "gcs_url": f"https://storage.googleapis.com/{VIDEO_BUCKET}/{filename}"
+            }, 200
+
     
         if status_json.get("status") == "FAILED":
             return {
                 "status": "failed",
                 "job_id": job_id,
-                "error": status_json
+                "error": status_json.get("error") or status_json
             }, 500
     
         time.sleep(5)
