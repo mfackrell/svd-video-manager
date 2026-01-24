@@ -6,11 +6,11 @@ from google.cloud import storage
 import base64
 
 
-
 RUNPOD_API_KEY = os.environ["RUNPOD_API_KEY"]
 SVD_ENDPOINT_ID = os.environ["SVD_ENDPOINT_ID"]
 VIDEO_BUCKET = "ssm-video-engine-output"
 
+SELF_URL = "https://svd-video-manager-710616455963.us-central1.run.app"
 
 HEADERS = {
     "Authorization": f"Bearer {RUNPOD_API_KEY}",
@@ -60,6 +60,7 @@ def svd_video_manager(request):
             "length": 144,
             "steps": 10
         },
+        "webhook": SELF_URL
     }
 
     res = requests.post(
@@ -70,11 +71,8 @@ def svd_video_manager(request):
     )
     res.raise_for_status()
 
-    job_id = res.json()["id"]
-    
     return {
         "status": "submitted",
-        "job_id": job_id
+        "job_id": res.json()["id"]
     }, 202
-
 
