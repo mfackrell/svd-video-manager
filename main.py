@@ -37,7 +37,7 @@ def svd_video_manager(request):
             "cfg": 2.0,
             "width": 576,
             "height": 1024,
-            "length": 144,
+            "length": 12,
             "steps": 10
         }
     }
