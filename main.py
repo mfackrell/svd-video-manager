@@ -2,6 +2,7 @@ import os
 import requests
 import uuid
 import base64
+import json                # ← ADD THIS LINE
 from functions_framework import http
 from google.cloud import storage
 
@@ -40,6 +41,19 @@ def svd_video_manager(request):
         filename = f"videos/{uuid.uuid4().hex}.mp4"
         blob = bucket.blob(filename)
         blob.upload_from_string(video_bytes, content_type="video/mp4")
+
+        video_url = f"https://storage.googleapis.com/{VIDEO_BUCKET}/{filename}"
+        
+        # 🔴 ADD THIS BLOCK EXACTLY HERE
+        job_blob = bucket.blob(f"jobs/{data.get('id')}.json")
+        job_blob.upload_from_string(
+            json.dumps({
+                "status": "complete",
+                "videoUrl": video_url
+            }),
+            content_type="application/json"
+        )
+        # 🔴 END ADDITION
 
         return {
             "status": "complete",
