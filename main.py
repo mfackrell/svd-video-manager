@@ -109,6 +109,8 @@ def svd_video_manager(request):
         with open(local_video, "wb") as f:
             f.write(video_bytes)
 
+        print("ffmpeg path:", shutil.which("ffmpeg"), flush=True)
+        
         try:
             _ffmpeg_last_frame(local_video, local_frame)
         except Exception as e:
