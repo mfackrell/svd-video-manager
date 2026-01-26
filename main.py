@@ -77,10 +77,8 @@ def svd_video_manager(request):
             "cfg": 2.0,
             "width": 576,
             "height": 1024,
-
-            # 🔥 GPU-SAFE HARD CAP
-            "length": 32,
-
+            "length": 48,
+            "fps": 12,
             "steps": 10
         },
         "webhook": SELF_URL
