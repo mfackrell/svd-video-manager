@@ -36,40 +36,13 @@ def svd_video_manager(request):
             video_base64 = video_base64.split(",", 1)[1]
 
         video_bytes = base64.b64decode(video_base64)
-        with tempfile.TemporaryDirectory() as tmp:
-            in_path = os.path.join(tmp, "input.mp4")
-            out_path = os.path.join(tmp, "output.mp4")
-        
-            # write original video
-            with open(in_path, "wb") as f:
-                f.write(video_bytes)
-        
-            result = subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i", in_path,
-                    "-filter:v", "setpts=2.0*PTS",
-                    "-an",
-                    out_path
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            
-            # If ffmpeg failed, fall back to original video
-            if result.returncode != 0:
-                # OPTIONAL: log stderr for debugging
-                print("FFmpeg failed:", result.stderr.decode("utf-8"), flush=True)
-                out_path = in_path
-
 
         client = storage.Client()
         bucket = client.bucket(VIDEO_BUCKET)
 
         filename = f"videos/{uuid.uuid4().hex}.mp4"
         blob = bucket.blob(filename)
-        blob.upload_from_filename(out_path, content_type="video/mp4")
+        blob.upload_from_string(video_bytes, content_type="video/mp4")
 
         video_url = f"https://storage.googleapis.com/{VIDEO_BUCKET}/{filename}"
         
