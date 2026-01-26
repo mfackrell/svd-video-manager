@@ -23,6 +23,30 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+def extract_last_frame_png(video_bytes: bytes) -> bytes:
+    with tempfile.TemporaryDirectory() as tmp:
+        in_path = os.path.join(tmp, "chunk.mp4")
+        out_path = os.path.join(tmp, "last.png")
+
+        with open(in_path, "wb") as f:
+            f.write(video_bytes)
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-sseof", "-1",
+                "-i", in_path,
+                "-frames:v", "1",
+                out_path
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        with open(out_path, "rb") as f:
+            return f.read()
+
 @http
 def svd_video_manager(request):
     data = request.get_json(silent=True) or {}
@@ -62,6 +86,23 @@ def svd_video_manager(request):
         )
 
         job["chunks"].append(chunk_path)
+
+        # ✅ EXTRACT LAST FRAME AND USE IT AS NEXT LOOP IMAGE
+        try:
+            last_png_bytes = extract_last_frame_png(video_bytes)
+        except Exception as e:
+            return {"error": f"Failed to extract last frame: {str(e)}"}, 500
+
+        last_frame_path = f"images/{root_id}/last_frame_{loop}.png"
+        bucket.blob(last_frame_path).upload_from_string(
+            last_png_bytes, content_type="image/png"
+        )
+
+        last_frame_url = f"https://storage.googleapis.com/{VIDEO_BUCKET}/{last_frame_path}"
+
+        # ✅ overwrite the image_url so the next loop uses it
+        job["image_url"] = last_frame_url
+
         job["loop"] += 1
 
         # 🔴 STOP CONDITION
@@ -75,10 +116,11 @@ def svd_video_manager(request):
             return {
                 "status": "svd_complete",
                 "root_id": root_id,
-                "chunks": job["chunks"]
+                "chunks": job["chunks"],
+                "final_image_url": job["image_url"]
             }, 200
 
-        # 🔁 SUBMIT NEXT SVD LOOP (SAME IMAGE)
+        # 🔁 SUBMIT NEXT SVD LOOP (USING LAST FRAME IMAGE)
         payload = {
             "input": {
                 "prompt": "subtle cinematic camera movement, realistic motion, shallow depth of field",
@@ -109,7 +151,8 @@ def svd_video_manager(request):
         return {
             "status": "continuing",
             "root_id": root_id,
-            "loop": job["loop"]
+            "loop": job["loop"],
+            "next_image_url": job["image_url"]
         }, 202
 
     # ======================================================
