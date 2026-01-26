@@ -44,15 +44,25 @@ def svd_video_manager(request):
             with open(in_path, "wb") as f:
                 f.write(video_bytes)
         
-            # 🔥 RETIME VIDEO (example: 2× slower → doubles duration)
-            subprocess.check_call([
-                "ffmpeg",
-                "-y",
-                "-i", in_path,
-                "-filter:v", "setpts=2.0*PTS",
-                "-an",
-                out_path
-            ])
+            result = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-i", in_path,
+                    "-filter:v", "setpts=2.0*PTS",
+                    "-an",
+                    out_path
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            
+            # If ffmpeg failed, fall back to original video
+            if result.returncode != 0:
+                # OPTIONAL: log stderr for debugging
+                print("FFmpeg failed:", result.stderr.decode("utf-8"), flush=True)
+                out_path = in_path
+
 
         client = storage.Client()
         bucket = client.bucket(VIDEO_BUCKET)
