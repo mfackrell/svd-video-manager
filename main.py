@@ -5,6 +5,8 @@ import base64
 import tempfile
 import subprocess
 import requests
+import shutil
+
 from functions_framework import http
 from google.cloud import storage
 
@@ -31,6 +33,8 @@ def _gcs():
 
 def _public_url(path: str) -> str:
     return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{path}"
+
+print("ffmpeg path:", shutil.which("ffmpeg"), flush=True)
 
 def _ffmpeg_last_frame(video_path: str, frame_path: str):
     r = subprocess.run(
