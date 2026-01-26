@@ -2,7 +2,9 @@ import os
 import requests
 import uuid
 import base64
-import json                # ← ADD THIS LINE
+import json
+import tempfile
+import subprocess
 from functions_framework import http
 from google.cloud import storage
 
@@ -34,6 +36,23 @@ def svd_video_manager(request):
             video_base64 = video_base64.split(",", 1)[1]
 
         video_bytes = base64.b64decode(video_base64)
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = os.path.join(tmp, "input.mp4")
+            out_path = os.path.join(tmp, "output.mp4")
+        
+            # write original video
+            with open(in_path, "wb") as f:
+                f.write(video_bytes)
+        
+            # 🔥 RETIME VIDEO (example: 2× slower → doubles duration)
+            subprocess.check_call([
+                "ffmpeg",
+                "-y",
+                "-i", in_path,
+                "-filter:v", "setpts=2.0*PTS",
+                "-an",
+                out_path
+            ])
 
         client = storage.Client()
         bucket = client.bucket(VIDEO_BUCKET)
@@ -77,8 +96,7 @@ def svd_video_manager(request):
             "cfg": 2.0,
             "width": 576,
             "height": 1024,
-            "length": 48,
-            "fps": 12,
+            "length": 32,
             "steps": 10
         },
         "webhook": SELF_URL
