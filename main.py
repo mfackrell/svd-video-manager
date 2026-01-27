@@ -134,14 +134,21 @@ def svd_video_manager(request):
         job["loop"] = loop + 1
 
         if job["loop"] >= TOTAL_LOOPS:
-            job["status"] = "COMPLETE"
-            job["final_video_url"] = stitch_chunks_to_final(
+            # mark finalization phase BEFORE heavy FFmpeg
+            job["status"] = "FINALIZING"
+            job_blob.upload_from_string(json.dumps(job))
+        
+            final_url = stitch_chunks_to_final(
                 bucket, root_id, job["chunks"]
             )
+        
+            job["status"] = "COMPLETE"
+            job["final_video_url"] = final_url
             job_blob.upload_from_string(json.dumps(job))
+        
             return {
                 "status": "finished",
-                "final_video_url": job["final_video_url"]
+                "final_video_url": final_url
             }, 200
 
         payload = {
