@@ -7,8 +7,8 @@ from google.cloud import storage
 CHUNK_FRAMES = 36
 TOTAL_LOOPS = 4
 VIDEO_BUCKET = "ssm-video-engine-output"
-SVD_ENDPOINT_ID = os.environ["SVD_ENDPOINT_ID"]
-RUNPOD_API_KEY = os.environ["RUNPOD_API_KEY"]
+SVD_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")
+RUNPOD_API_KEY = os.environ.get("RUNPOD_API_KEY")
 SELF_URL = "https://svd-video-manager-710616455963.us-central1.run.app"
 
 def extract_last_frame_png(video_bytes):
@@ -50,6 +50,13 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
 @http
 def svd_video_manager(request):
     data = request.get_json(silent=True) or {}
+
+    missing_env = {
+        "SVD_ENDPOINT_ID": not bool(SVD_ENDPOINT_ID),
+        "RUNPOD_API_KEY": not bool(RUNPOD_API_KEY),
+    }
+    if any(missing_env.values()):
+        return {"error": "Missing required environment variables", "missing": missing_env}, 500
 
     client = storage.Client()
     bucket = client.bucket(VIDEO_BUCKET)
@@ -132,4 +139,3 @@ def svd_video_manager(request):
     )
 
     return {"state": "PENDING", "jobId": root_id}, 202
-
