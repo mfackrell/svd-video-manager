@@ -1,5 +1,3 @@
-//svd-video-manager (the sdxl mananger) dockerfile
-
 FROM python:3.11-slim
 
 RUN apt-get update \
