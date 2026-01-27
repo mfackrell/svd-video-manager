@@ -51,6 +51,13 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
 def svd_video_manager(request):
     data = request.get_json(silent=True) or {}
 
+    missing_env = {
+        "SVD_ENDPOINT_ID": not bool(SVD_ENDPOINT_ID),
+        "RUNPOD_API_KEY": not bool(RUNPOD_API_KEY),
+    }
+    if any(missing_env.values()):
+        return {"error": "Missing required environment variables", "missing": missing_env}, 500
+
     client = storage.Client()
     bucket = client.bucket(VIDEO_BUCKET)
 
@@ -132,4 +139,3 @@ def svd_video_manager(request):
     )
 
     return {"state": "PENDING", "jobId": root_id}, 202
-
