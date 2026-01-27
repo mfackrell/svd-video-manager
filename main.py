@@ -1,4 +1,4 @@
-//svd-video-manager main.py
+#svd-video-manager main.py
 
 import os, requests, uuid, base64, json, tempfile, subprocess
 from functions_framework import http
