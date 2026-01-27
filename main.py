@@ -7,8 +7,8 @@ from google.cloud import storage
 CHUNK_FRAMES = 36
 TOTAL_LOOPS = 4
 VIDEO_BUCKET = "ssm-video-engine-output"
-SVD_ENDPOINT_ID = os.environ["SVD_ENDPOINT_ID"]
-RUNPOD_API_KEY = os.environ["RUNPOD_API_KEY"]
+SVD_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")
+RUNPOD_API_KEY = os.environ.get("RUNPOD_API_KEY")
 SELF_URL = "https://svd-video-manager-710616455963.us-central1.run.app"
 
 def extract_last_frame_png(video_bytes):
