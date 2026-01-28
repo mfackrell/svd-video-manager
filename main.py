@@ -6,6 +6,7 @@ import uuid
 import base64
 import json
 import tempfile
+import time
 import subprocess
 
 from functions_framework import http
@@ -65,15 +66,9 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
 
 def start_svd_base_video(data, bucket):
     image_url = data["image_url"]
-    if (existingJobId?.startsWith("svd:")) {
-      const rootId = existingJobId.slice(4);
-      const job = await readSvdJob(rootId);
-    
-      if (job?.started_at && Date.now() - job.started_at > 10 * 60 * 1000) {
-        throw new Error("Stale SVD job detected");
-      }
-    }
 
+    root_id = uuid.uuid4().hex
+    
     job = {
         "status": "PENDING",
         "root_id": root_id,
