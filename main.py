@@ -100,6 +100,10 @@ def start_svd_base_video(data, bucket):
 
 @http
 def svd_video_manager(request):
+    print(f"Content-Type: {request.content_type}")
+    print(f"Raw body: {request.get_data()}")
+    data = request.get_json(silent=True) or {}
+    print(f"Parsed data: {data}")
     data = request.get_json(silent=True) or {}
 
     if not SVD_ENDPOINT_ID or not RUNPOD_API_KEY:
