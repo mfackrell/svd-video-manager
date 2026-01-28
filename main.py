@@ -12,6 +12,8 @@ import subprocess
 from functions_framework import http
 from google.cloud import storage
 
+print(subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout)
+
 CHUNK_FRAMES = 36
 TOTAL_LOOPS = 4
 VIDEO_BUCKET = "ssm-video-engine-output"
