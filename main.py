@@ -54,14 +54,33 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
             for p in local_paths:
                 f.write(f"file '{p}'\n")
 
-        out_path = os.path.join(tmp, "final.mp4")
+        # --- stage 1: concat (unchanged behavior)
+        concat_path = os.path.join(tmp, "concat.mp4")
         subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", out_path],
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", concat_path],
             check=True
         )
-
+        
+        # --- stage 2: REAL final render (this is the missing piece)
+        final_render_path = os.path.join(tmp, "final.mp4")
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", concat_path,
+                "-vf", "fps=30",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                final_render_path
+            ],
+            check=True
+        )
+        
         final_path = f"videos/{root_id}/final.mp4"
-        bucket.blob(final_path).upload_from_filename(out_path, content_type="video/mp4")
+        bucket.blob(final_path).upload_from_filename(
+            final_render_path,
+            content_type="video/mp4"
+        )
+
 
         return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{final_path}"
 
