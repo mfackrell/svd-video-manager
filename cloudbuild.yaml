@@ -3,9 +3,26 @@ options:
 
 steps:
   - name: gcr.io/cloud-builders/docker
-    args: ["build", "-t", "$IMAGE", "."]
-  - name: gcr.io/cloud-builders/docker
-    args: ["push", "$IMAGE"]
+    args:
+      - build
+      - -t
+      - us-central1-docker.pkg.dev/social-stream-webhook/cloud-run-source-deploy/svd-video-manager:$COMMIT_SHA
+      - .
 
-images:
-  - "$IMAGE"
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - us-central1-docker.pkg.dev/social-stream-webhook/cloud-run-source-deploy/svd-video-manager:$COMMIT_SHA
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - svd-video-manager
+      - --image=us-central1-docker.pkg.dev/social-stream-webhook/cloud-run-source-deploy/svd-video-manager:$COMMIT_SHA
+      - --region=us-central1
+      - --platform=managed
+      - --quiet
+
