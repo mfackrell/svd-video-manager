@@ -65,7 +65,14 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
 
 def start_svd_base_video(data, bucket):
     image_url = data["image_url"]
-    root_id = uuid.uuid4().hex
+    if (existingJobId?.startsWith("svd:")) {
+      const rootId = existingJobId.slice(4);
+      const job = await readSvdJob(rootId);
+    
+      if (job?.started_at && Date.now() - job.started_at > 10 * 60 * 1000) {
+        throw new Error("Stale SVD job detected");
+      }
+    }
 
     job = {
         "status": "PENDING",
