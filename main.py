@@ -77,6 +77,7 @@ def start_svd_base_video(data, bucket):
     job = {
         "status": "PENDING",
         "root_id": root_id,
+        "started_at": time.time(),
         "current_image_url": image_url,
         "loop": 0,
         "chunks": []
