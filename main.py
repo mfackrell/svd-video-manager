@@ -104,7 +104,6 @@ def svd_video_manager(request):
     print(f"Raw body: {request.get_data()}")
     data = request.get_json(silent=True) or {}
     print(f"Parsed data: {data}")
-    data = request.get_json(silent=True) or {}
 
     if not SVD_ENDPOINT_ID or not RUNPOD_API_KEY:
         return {"error": "Missing required environment variables"}, 500
@@ -180,4 +179,9 @@ def svd_video_manager(request):
     if "image_url" in data:
         return start_svd_base_video(data, bucket)
 
-    return {"error": "Invalid payload"}, 400
+    return {
+        "error": "Invalid payload",
+        "received_content_type": request.content_type,
+        "received_data": data,
+        "hint": "Expected 'image_url' for new job or 'status'='COMPLETED' for callback"
+    }, 400
