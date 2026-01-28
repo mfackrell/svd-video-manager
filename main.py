@@ -15,7 +15,7 @@ from google.cloud import storage
 print(subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout)
 
 CHUNK_FRAMES = 36
-TOTAL_LOOPS = 4
+TOTAL_LOOPS = 3
 VIDEO_BUCKET = "ssm-video-engine-output"
 
 SVD_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")
