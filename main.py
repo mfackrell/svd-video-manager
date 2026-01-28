@@ -32,7 +32,7 @@ def extract_last_frame_png(video_bytes):
             f.write(video_bytes)
 
         subprocess.run(
-            ["ffmpeg", "-y", "-sseof", "-1", "-i", in_path, "-frames:v", "1", out_path],
+            ["ffmpeg", "-y", "-sseof", "-1", "-i", in_path, "-frames:v", "-update", "1", out_path],
             check=True
         )
 
