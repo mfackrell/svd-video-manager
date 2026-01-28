@@ -10,4 +10,3 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 CMD ["functions-framework", "--target=svd_video_manager", "--port=8080"]
-]
