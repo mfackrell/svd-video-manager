@@ -41,8 +41,6 @@ def extract_last_frame_png(video_bytes):
 
 
 def stitch_chunks_to_final(bucket, root_id, chunk_paths):
-    print(">>> FINALIZING VIDEO")
-    print("Chunks:", job["chunks"])
     with tempfile.TemporaryDirectory() as tmp:
         local_paths = []
 
@@ -162,6 +160,9 @@ def svd_video_manager(request):
             job["status"] = "FINALIZING"
             job_blob.upload_from_string(json.dumps(job))
         
+            print(">>> FINALIZING VIDEO")
+            print("Chunks:", job["chunks"])
+            
             final_url = stitch_chunks_to_final(
                 bucket, root_id, job["chunks"]
             )
@@ -182,10 +183,10 @@ def svd_video_manager(request):
 
         print(">>> LOOP", job["loop"], "OF", TOTAL_LOOPS)
         print("Next image URL:", job["current_image_url"])
-        
-        requests.post(
-            print(">>> RUNPOD JOB SUBMITTED")
 
+        print(">>> RUNPOD JOB SUBMITTED")
+
+        requests.post(
             f"https://api.runpod.ai/v2/{SVD_ENDPOINT_ID}/run",
             headers={
                 "Authorization": f"Bearer {RUNPOD_API_KEY}",
