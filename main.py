@@ -132,6 +132,28 @@ def svd_video_manager(request):
     client = storage.Client()
     bucket = client.bucket(VIDEO_BUCKET)
 
+    # ---- RUNPOD FAILURE CALLBACK
+    if data.get("status") == "FAILED":
+        root_id = request.args.get("root_id")
+        if not root_id:
+            return {"error": "missing root_id"}, 400
+    
+        job_blob = bucket.blob(f"jobs/{root_id}.json")
+        job = json.loads(job_blob.download_as_text())
+    
+        job["status"] = "FAILED"
+        job["error"] = data.get("error")
+        job["failed_at"] = time.time()
+    
+        job_blob.upload_from_string(json.dumps(job))
+    
+        # IMPORTANT: return 200 so RunPod stops retrying
+        return {
+            "status": "failed",
+            "error": data.get("error")
+        }, 200
+
+    
     # ---- RUNPOD CALLBACK
     if data.get("status") == "COMPLETED":
         root_id = request.args.get("root_id")
