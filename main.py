@@ -12,11 +12,6 @@ import subprocess
 from functions_framework import http
 from google.cloud import storage
 
-print("=== SVD VIDEO MANAGER INVOKED ===")
-print("METHOD:", request.method)
-print("ARGS:", dict(request.args))
-print("RAW BODY:", request.get_data(as_text=True))
-
 print(subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout)
 
 CHUNK_FRAMES = 36
@@ -72,14 +67,12 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
 
 
 def start_svd_base_video(data, bucket):
+    image_url = data["image_url"]
+    root_id = uuid.uuid4().hex
+
     print(">>> STARTING BASE SVD JOB")
     print("Image URL:", image_url)
     print("Root ID:", root_id)
-
-    
-    image_url = data["image_url"]
-    
-    root_id = uuid.uuid4().hex
     
     job = {
         "status": "PENDING",
@@ -113,8 +106,10 @@ def start_svd_base_video(data, bucket):
 
 @http
 def svd_video_manager(request):
-    print(f"Content-Type: {request.content_type}")
-    print(f"Raw body: {request.get_data()}")
+    print("=== SVD VIDEO MANAGER INVOKED ===")
+    print("METHOD:", request.method)
+    print("ARGS:", dict(request.args))
+    print("RAW BODY:", request.get_data(as_text=True))
     data = request.get_json(silent=True) or {}
     print(f"Parsed data: {data}")
 
