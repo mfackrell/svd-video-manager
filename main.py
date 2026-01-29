@@ -140,6 +140,13 @@ def svd_video_manager(request):
     
         job_blob = bucket.blob(f"jobs/{root_id}.json")
         job = json.loads(job_blob.download_as_text())
+
+        # ---- HARD STOP: job already completed (idempotency guard)
+        if job.get("status") == "COMPLETE":
+            return {
+                "status": "COMPLETE",
+                "final_video_url": job.get("final_video_url")
+            }, 200            
     
         job["status"] = "FAILED"
         job["error"] = data.get("error")
@@ -162,8 +169,16 @@ def svd_video_manager(request):
 
         job_blob = bucket.blob(f"jobs/{root_id}.json")
         job = json.loads(job_blob.download_as_text())
+        
+        # ---- HARD STOP: job already completed (idempotency guard)
+        if job.get("status") == "COMPLETE":
+            return {
+                "status": "COMPLETE",
+                "final_video_url": job.get("final_video_url")
+            }, 200
 
         video_b64 = data["output"]["video"]
+
         if video_b64.startswith("data:"):
             video_b64 = video_b64.split(",", 1)[1]
 
@@ -215,8 +230,12 @@ def svd_video_manager(request):
             timeout=30
         )
 
-        job_blob.upload_from_string(json.dumps(job))
+        # only persist looping state if job is NOT complete
+        if job.get("status") != "COMPLETE":
+            job_blob.upload_from_string(json.dumps(job))
+        
         return {"status": "looping", "loop": job["loop"]}, 200
+
 
     # ---- INITIAL BASE VIDEO REQUEST
     if "image_url" in data:
