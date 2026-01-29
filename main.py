@@ -15,7 +15,7 @@ from google.cloud import storage
 print(subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout)
 
 CHUNK_FRAMES = 36
-TOTAL_LOOPS = 3
+TOTAL_LOOPS = 4
 VIDEO_BUCKET = "ssm-video-engine-output"
 
 SVD_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")
@@ -54,25 +54,41 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
             for p in local_paths:
                 f.write(f"file '{p}'\n")
 
-        out_path = os.path.join(tmp, "final.mp4")
+        # --- stage 1: concat (unchanged behavior)
+        concat_path = os.path.join(tmp, "concat.mp4")
         subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", out_path],
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", concat_path],
             check=True
         )
-
+        
+        # --- stage 2: REAL final render (this is the missing piece)
+        final_render_path = os.path.join(tmp, "final.mp4")
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", concat_path,
+                "-vf", "fps=30",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                final_render_path
+            ],
+            check=True
+        )
+        
         final_path = f"videos/{root_id}/final.mp4"
-        bucket.blob(final_path).upload_from_filename(out_path, content_type="video/mp4")
+        bucket.blob(final_path).upload_from_filename(
+            final_render_path,
+            content_type="video/mp4"
+        )
+
 
         return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{final_path}"
 
 
 def start_svd_base_video(data, bucket):
     image_url = data["image_url"]
-    root_id = uuid.uuid4().hex
 
-    print(">>> STARTING BASE SVD JOB")
-    print("Image URL:", image_url)
-    print("Root ID:", root_id)
+    root_id = uuid.uuid4().hex
     
     job = {
         "status": "PENDING",
@@ -99,18 +115,14 @@ def start_svd_base_video(data, bucket):
         json=payload,
         timeout=30
     )
-    print(">>> RUNPOD JOB SUBMITTED")
 
     return {"state": "PENDING", "jobId": root_id}, 202
 
 
 @http
 def svd_video_manager(request):
-    print("=== SVD VIDEO MANAGER INVOKED ===")
-    print("METHOD:", request.method)
-    print("ARGS:", dict(request.args))
-    print("RAW BODY:", request.get_data(as_text=True))
-    
+    print(f"Content-Type: {request.content_type}")
+    print(f"Raw body: {request.get_data()}")
     data = request.get_json(silent=True) or {}
     print(f"Parsed data: {data}")
 
@@ -122,23 +134,18 @@ def svd_video_manager(request):
 
     # ---- RUNPOD CALLBACK
     if data.get("status") == "COMPLETED":
-        print(">>> RUNPOD CALLBACK RECEIVED")
-        print("Root ID arg:", request.args.get("root_id"))
         root_id = request.args.get("root_id")
         if not root_id:
             return {"error": "missing root_id"}, 400
 
         job_blob = bucket.blob(f"jobs/{root_id}.json")
         job = json.loads(job_blob.download_as_text())
-        print(">>> JOB STATE LOADED:", job)
 
         video_b64 = data["output"]["video"]
         if video_b64.startswith("data:"):
             video_b64 = video_b64.split(",", 1)[1]
 
         video_bytes = base64.b64decode(video_b64)
-        print(">>> VIDEO BYTES LENGTH:", len(video_bytes))
-
 
         loop = job["loop"]
 
@@ -146,9 +153,7 @@ def svd_video_manager(request):
         bucket.blob(chunk_path).upload_from_string(video_bytes, content_type="video/mp4")
         job["chunks"].append(chunk_path)
 
-        print(">>> EXTRACTING LAST FRAME")
         last_frame_bytes = extract_last_frame_png(video_bytes)
-        print(">>> LAST FRAME EXTRACTED")
         frame_path = f"images/{root_id}/last_frame_{loop}.png"
         bucket.blob(frame_path).upload_from_string(last_frame_bytes, content_type="image/png")
 
@@ -160,9 +165,6 @@ def svd_video_manager(request):
             job["status"] = "FINALIZING"
             job_blob.upload_from_string(json.dumps(job))
         
-            print(">>> FINALIZING VIDEO")
-            print("Chunks:", job["chunks"])
-            
             final_url = stitch_chunks_to_final(
                 bucket, root_id, job["chunks"]
             )
@@ -181,11 +183,6 @@ def svd_video_manager(request):
             "webhook": f"{SELF_URL}?root_id={root_id}"
         }
 
-        print(">>> LOOP", job["loop"], "OF", TOTAL_LOOPS)
-        print("Next image URL:", job["current_image_url"])
-
-        print(">>> RUNPOD JOB SUBMITTED")
-
         requests.post(
             f"https://api.runpod.ai/v2/{SVD_ENDPOINT_ID}/run",
             headers={
@@ -196,7 +193,6 @@ def svd_video_manager(request):
             timeout=30
         )
 
-       
         job_blob.upload_from_string(json.dumps(job))
         return {"status": "looping", "loop": job["loop"]}, 200
 
