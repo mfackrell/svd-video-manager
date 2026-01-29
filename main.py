@@ -155,7 +155,7 @@ def svd_video_manager(request):
 
     
     # ---- RUNPOD CALLBACK
-    if data.get("status") == "COMPLETED":
+    if data.get("status") == "COMPLETED" or "output" in data:
         root_id = request.args.get("root_id")
         if not root_id:
             return {"error": "missing root_id"}, 400
@@ -196,7 +196,7 @@ def svd_video_manager(request):
             job_blob.upload_from_string(json.dumps(job))
         
             return {
-                "status": "finished",
+                "status": "COMPLETE",
                 "final_video_url": final_url
             }, 200
 
