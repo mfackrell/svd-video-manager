@@ -12,6 +12,11 @@ import subprocess
 from functions_framework import http
 from google.cloud import storage
 
+print("=== SVD VIDEO MANAGER INVOKED ===")
+print("METHOD:", request.method)
+print("ARGS:", dict(request.args))
+print("RAW BODY:", request.get_data(as_text=True))
+
 print(subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout)
 
 CHUNK_FRAMES = 36
@@ -67,8 +72,13 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
 
 
 def start_svd_base_video(data, bucket):
-    image_url = data["image_url"]
+    print(">>> STARTING BASE SVD JOB")
+    print("Image URL:", image_url)
+    print("Root ID:", root_id)
 
+    
+    image_url = data["image_url"]
+    
     root_id = uuid.uuid4().hex
     
     job = {
@@ -96,6 +106,7 @@ def start_svd_base_video(data, bucket):
         json=payload,
         timeout=30
     )
+    print(">>> RUNPOD JOB SUBMITTED")
 
     return {"state": "PENDING", "jobId": root_id}, 202
 
@@ -115,12 +126,15 @@ def svd_video_manager(request):
 
     # ---- RUNPOD CALLBACK
     if data.get("status") == "COMPLETED":
+        print(">>> RUNPOD CALLBACK RECEIVED")
+        print("Root ID arg:", request.args.get("root_id"))
         root_id = request.args.get("root_id")
         if not root_id:
             return {"error": "missing root_id"}, 400
 
         job_blob = bucket.blob(f"jobs/{root_id}.json")
         job = json.loads(job_blob.download_as_text())
+        print(">>> JOB STATE LOADED:", job)
 
         video_b64 = data["output"]["video"]
         if video_b64.startswith("data:"):
