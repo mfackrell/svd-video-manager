@@ -41,6 +41,8 @@ def extract_last_frame_png(video_bytes):
 
 
 def stitch_chunks_to_final(bucket, root_id, chunk_paths):
+    print(">>> FINALIZING VIDEO")
+    print("Chunks:", job["chunks"])
     with tempfile.TemporaryDirectory() as tmp:
         local_paths = []
 
@@ -110,6 +112,7 @@ def svd_video_manager(request):
     print("METHOD:", request.method)
     print("ARGS:", dict(request.args))
     print("RAW BODY:", request.get_data(as_text=True))
+    
     data = request.get_json(silent=True) or {}
     print(f"Parsed data: {data}")
 
@@ -136,6 +139,8 @@ def svd_video_manager(request):
             video_b64 = video_b64.split(",", 1)[1]
 
         video_bytes = base64.b64decode(video_b64)
+        print(">>> VIDEO BYTES LENGTH:", len(video_bytes))
+
 
         loop = job["loop"]
 
@@ -143,7 +148,9 @@ def svd_video_manager(request):
         bucket.blob(chunk_path).upload_from_string(video_bytes, content_type="video/mp4")
         job["chunks"].append(chunk_path)
 
+        print(">>> EXTRACTING LAST FRAME")
         last_frame_bytes = extract_last_frame_png(video_bytes)
+        print(">>> LAST FRAME EXTRACTED")
         frame_path = f"images/{root_id}/last_frame_{loop}.png"
         bucket.blob(frame_path).upload_from_string(last_frame_bytes, content_type="image/png")
 
@@ -173,7 +180,12 @@ def svd_video_manager(request):
             "webhook": f"{SELF_URL}?root_id={root_id}"
         }
 
+        print(">>> LOOP", job["loop"], "OF", TOTAL_LOOPS)
+        print("Next image URL:", job["current_image_url"])
+        
         requests.post(
+            print(">>> RUNPOD JOB SUBMITTED")
+
             f"https://api.runpod.ai/v2/{SVD_ENDPOINT_ID}/run",
             headers={
                 "Authorization": f"Bearer {RUNPOD_API_KEY}",
@@ -183,6 +195,7 @@ def svd_video_manager(request):
             timeout=30
         )
 
+       
         job_blob.upload_from_string(json.dumps(job))
         return {"status": "looping", "loop": job["loop"]}, 200
 
