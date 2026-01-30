@@ -101,8 +101,24 @@ def start_svd_base_video(data, bucket):
 
     bucket.blob(f"jobs/{root_id}.json").upload_from_string(json.dumps(job))
 
+    SVD_NEGATIVE_PROMPT = (
+        "people, person, human, humans, face, faces, body, bodies, "
+        "silhouette, character, characters, man, woman, child, "
+        "hands, arms, legs"
+    )
+
+    SVD_PROMPT = (
+        "abstract cinematic background motion, environmental movement, "
+        "atmospheric depth, natural motion, no characters"
+    )
+
     payload = {
-        "input": {"image_url": image_url, "steps": 10},
+        "input": {
+            "image_url": image_url,
+            "steps": 10,
+            "prompt": SVD_PROMPT,
+            "negative_prompt": SVD_NEGATIVE_PROMPT
+        },
         "webhook": f"{SELF_URL}?root_id={root_id}"
     }
 
