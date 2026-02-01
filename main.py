@@ -67,7 +67,7 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
             [
                 "ffmpeg", "-y",
                 "-i", concat_path,
-                "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30",
+                "-vf", "fps=30",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 final_render_path
