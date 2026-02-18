@@ -117,7 +117,8 @@ def start_svd_base_video(data, bucket):
             "image_url": image_url,
             "steps": 10,
             "prompt": SVD_PROMPT,
-            "negative_prompt": SVD_NEGATIVE_PROMPT
+            "negative_prompt": SVD_NEGATIVE_PROMPT,
+            "weight_dtype": "bf16" # Add this line to bypass FP8 compilation
         },
         "webhook": f"{SELF_URL}?root_id={root_id}"
     }
