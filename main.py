@@ -42,45 +42,52 @@ def extract_last_frame_png(video_bytes):
 
 def stitch_chunks_to_final(bucket, root_id, chunk_paths):
     with tempfile.TemporaryDirectory() as tmp:
-        local_paths = []
+        processed_chunks = []
 
         for i, chunk_path in enumerate(chunk_paths):
-            local_path = os.path.join(tmp, f"chunk_{i}.mp4")
-            bucket.blob(chunk_path).download_to_filename(local_path)
-            local_paths.append(local_path)
+            raw_path = os.path.join(tmp, f"raw_{i}.mp4")
+            norm_path = os.path.join(tmp, f"norm_{i}.mp4")
+            bucket.blob(chunk_path).download_to_filename(raw_path)
 
+            # --- Normalize Chunk ---
+            # 1. Force constant frame rate (30fps)
+            # 2. If it's NOT the first chunk, skip the first frame to avoid duplication
+            trim_filter = "fps=30"
+            if i > 0:
+                trim_filter = "select='gt(n,0)',fps=30"
+
+            subprocess.run([
+                "ffmpeg", "-y", "-i", raw_path,
+                "-vf", trim_filter,
+                "-pix_fmt", "yuv420p",
+                "-vsync", "cfr", 
+                "-c:v", "libx204", "-crf", "18", 
+                norm_path
+            ], check=True)
+            
+            processed_chunks.append(norm_path)
+
+        # Create the list for concat
         list_path = os.path.join(tmp, "list.txt")
         with open(list_path, "w", encoding="utf-8") as f:
-            for p in local_paths:
+            for p in processed_chunks:
                 f.write(f"file '{p}'\n")
 
-        # --- stage 1: concat (unchanged behavior)
-        concat_path = os.path.join(tmp, "concat.mp4")
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", concat_path],
-            check=True
-        )
-        
-        # --- stage 2: REAL final render (this is the missing piece)
+        # Final Stitched Output
         final_render_path = os.path.join(tmp, "final.mp4")
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", concat_path,
-                "-vf", "fps=30",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                final_render_path
-            ],
-            check=True
-        )
+        subprocess.run([
+            "ffmpeg", "-y", 
+            "-f", "concat", "-safe", "0", "-i", list_path, 
+            "-c", "copy", # Copying is fine now because we normalized above
+            "-movflags", "+faststart",
+            final_render_path
+        ], check=True)
         
         final_path = f"videos/{root_id}/final.mp4"
         bucket.blob(final_path).upload_from_filename(
             final_render_path,
             content_type="video/mp4"
         )
-
 
         return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{final_path}"
 
