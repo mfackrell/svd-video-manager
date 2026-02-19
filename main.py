@@ -52,44 +52,63 @@ def extract_last_frame_png(video_bytes):
 def stitch_chunks_to_final(bucket, root_id, chunk_paths):
     with tempfile.TemporaryDirectory() as tmp:
         local_paths = []
-
         for i, chunk_path in enumerate(chunk_paths):
             local_path = os.path.join(tmp, f"chunk_{i}.mp4")
             bucket.blob(chunk_path).download_to_filename(local_path)
             local_paths.append(local_path)
 
+        # 1. First, concatenate the raw chunks into one long clip
         list_path = os.path.join(tmp, "list.txt")
         with open(list_path, "w", encoding="utf-8") as f:
             for p in local_paths:
                 f.write(f"file '{p}'\n")
 
-        # --- stage 1: concat (unchanged behavior)
-        concat_path = os.path.join(tmp, "concat.mp4")
+        raw_concat_path = os.path.join(tmp, "raw_concat.mp4")
         subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", concat_path],
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", raw_concat_path],
             check=True
         )
-        
-        # --- stage 2: REAL final render (this is the missing piece)
+
+        # 2. CREATE THE SEAMLESS LOOP
+        # We take the last 1 second and fade it over the first 1 second.
+        # This requires re-encoding, but it's the only way to kill the 'stutter'.
         final_render_path = os.path.join(tmp, "final.mp4")
+        
+        # Duration of one loop is roughly 3-4 seconds depending on SVD settings.
+        # We will use a 1-second crossfade (30 frames at 30fps).
+        crossfade_script = (
+            "split [main][over]; "
+            "[over] trim=start=0:end=1, fade=t=in:st=0:d=1, hwdownload, format=pix_fmts=yuv420p [fadein]; "
+            "[main] trim=start=1 [body]; "
+            "[body][fadein] overlay-eof=1"
+        )
+        
+        # Simple crossfade logic: 
+        # We use a 'gl' or 'xfade' filter if your ffmpeg version supports it.
+        # For maximum compatibility across environments, we'll use this complex filter:
         subprocess.run(
             [
                 "ffmpeg", "-y",
-                "-i", concat_path,
-                "-vf", "fps=30",
+                "-i", raw_concat_path,
+                "-filter_complex", 
+                "loop=loop=1:size=32767:start=0, " # Extend buffer
+                "split [a][b]; "
+                "[a] trim=duration=0.5, setpts=PTS-STARTPTS [fadeout]; "
+                "[b] trim=start=0.5, setpts=PTS-STARTPTS [main]; "
+                "[main][fadeout] blend=all_expr='A*(if(gte(T,duration-0.5),1-(T-(duration-0.5))/0.5,1)) + B*(if(gte(T,duration-0.5),(T-(duration-0.5))/0.5,0))'",
+                "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 final_render_path
             ],
             check=True
         )
-        
+
         final_path = f"videos/{root_id}/final.mp4"
         bucket.blob(final_path).upload_from_filename(
             final_render_path,
             content_type="video/mp4"
         )
-
 
         return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{final_path}"
 
