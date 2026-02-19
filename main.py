@@ -117,10 +117,7 @@ def start_svd_base_video(data, bucket):
             "image_url": image_url,
             "steps": 10,
             "prompt": SVD_PROMPT,
-            "negative_prompt": SVD_NEGATIVE_PROMPT,
-            "weight_dtype": "bf16",
-            "use_frame_interpolation": False,  # Add this line
-            "fps": 15
+            "negative_prompt": SVD_NEGATIVE_PROMPT
         },
         "webhook": f"{SELF_URL}?root_id={root_id}"
     }
@@ -234,15 +231,8 @@ def svd_video_manager(request):
                 "final_video_url": final_url
             }, 200
 
-        # --- Update this section in svd_video_manager ---
         payload = {
-            "input": {
-                "image_url": job["current_image_url"], 
-                "steps": 10,
-                "weight_dtype": "bf16",           # Keep this for consistency
-                "use_frame_interpolation": False, # Stop the 404 crash
-                "fps": 15                         # Disable auto-smoothing
-            },
+            "input": {"image_url": job["current_image_url"], "steps": 10},
             "webhook": f"{SELF_URL}?root_id={root_id}"
         }
 
