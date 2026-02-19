@@ -21,7 +21,16 @@ VIDEO_BUCKET = "ssm-video-engine-output"
 SVD_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")
 RUNPOD_API_KEY = os.environ.get("RUNPOD_API_KEY")
 SELF_URL = "https://svd-video-manager-710616455963.us-central1.run.app"
+SVD_NEGATIVE_PROMPT = (
+    "people, person, human, humans, face, faces, body, bodies, "
+    "silhouette, character, characters, man, woman, child, "
+    "hands, arms, legs"
+)
 
+SVD_PROMPT = (
+    "cinematic background motion, environmental movement, "
+    "atmospheric depth, natural motion, no characters"
+)
 
 def extract_last_frame_png(video_bytes):
     with tempfile.TemporaryDirectory() as tmp:
@@ -100,17 +109,6 @@ def start_svd_base_video(data, bucket):
     }
 
     bucket.blob(f"jobs/{root_id}.json").upload_from_string(json.dumps(job))
-
-    SVD_NEGATIVE_PROMPT = (
-        "people, person, human, humans, face, faces, body, bodies, "
-        "silhouette, character, characters, man, woman, child, "
-        "hands, arms, legs"
-    )
-
-    SVD_PROMPT = (
-        "cinematic background motion, environmental movement, "
-        "atmospheric depth, natural motion, no characters"
-    )
 
     payload = {
         "input": {
