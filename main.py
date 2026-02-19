@@ -108,7 +108,7 @@ def start_svd_base_video(data, bucket):
     )
 
     SVD_PROMPT = (
-        "abstract cinematic background motion, environmental movement, "
+        "cinematic background motion, environmental movement, "
         "atmospheric depth, natural motion, no characters"
     )
 
@@ -231,8 +231,17 @@ def svd_video_manager(request):
                 "final_video_url": final_url
             }, 200
 
+        # --- Update the payload in the svd_video_manager function (around line 170) ---
         payload = {
-            "input": {"image_url": job["current_image_url"], "steps": 10},
+            "input": {
+                "image_url": job["current_image_url"], 
+                "steps": 10,
+                "prompt": SVD_PROMPT,          # ADD THIS: Use the variables defined earlier
+                "negative_prompt": SVD_NEGATIVE_PROMPT, # ADD THIS
+                "weight_dtype": "bf16",
+                "use_frame_interpolation": False,
+                "fps": 15
+            },
             "webhook": f"{SELF_URL}?root_id={root_id}"
         }
 
