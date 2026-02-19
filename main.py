@@ -234,8 +234,15 @@ def svd_video_manager(request):
                 "final_video_url": final_url
             }, 200
 
+        # --- Update this section in svd_video_manager ---
         payload = {
-            "input": {"image_url": job["current_image_url"], "steps": 10},
+            "input": {
+                "image_url": job["current_image_url"], 
+                "steps": 10,
+                "weight_dtype": "bf16",           # Keep this for consistency
+                "use_frame_interpolation": False, # Stop the 404 crash
+                "fps": 15                         # Disable auto-smoothing
+            },
             "webhook": f"{SELF_URL}?root_id={root_id}"
         }
 
