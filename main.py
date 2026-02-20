@@ -63,22 +63,26 @@ def stitch_chunks_to_final(bucket, root_id, chunk_paths):
             for p in local_paths:
                 f.write(f"file '{p}'\n")
 
-        # --- stage 1: concat (unchanged behavior)
-        concat_path = os.path.join(tmp, "concat.mp4")
-        subprocess.run(
-            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", concat_path],
-            check=True
-        )
-        
         # --- stage 2: REAL final render (this is the missing piece)
         final_render_path = os.path.join(tmp, "final.mp4")
+
+        fade_duration = 0.5
+        offset = 1.5
+        
         subprocess.run(
             [
                 "ffmpeg", "-y",
-                "-i", concat_path,
-                "-vf", "fps=15",
+                "-i", local_paths[0],
+                "-i", local_paths[1],
+                "-i", local_paths[2],
+                "-filter_complex", 
+                f"[0:v][1:v]xfade=transition=fade:duration={fade_duration}:offset={offset}[v1]; "
+                f"[v1][2:v]xfade=transition=fade:duration={fade_duration}:offset={offset+1.5}[vfinal]",
+                "-map", "[vfinal]",
                 "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
+                "-r", "15",
+                "-c:v", "libx264",
+                "-crf", "18",
                 final_render_path
             ],
             check=True
