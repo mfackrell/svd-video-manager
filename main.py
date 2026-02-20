@@ -113,8 +113,10 @@ def start_svd_base_video(data, bucket):
     payload = {
         "input": {
             "image_url": image_url,
-            "steps": 10,
+            "steps": 20,
             "prompt": SVD_PROMPT,
+            "motion_bucket_id": 127,  # Controls motion amount; lower is usually more stable
+            "cond_aug": 0.02,
             "negative_prompt": SVD_NEGATIVE_PROMPT
         },
         "webhook": f"{SELF_URL}?root_id={root_id}"
@@ -233,10 +235,12 @@ def svd_video_manager(request):
         payload = {
             "input": {
                 "image_url": job["current_image_url"], 
-                "steps": 10,
+                "steps": 20,
                 "prompt": SVD_PROMPT,          # ADD THIS: Use the variables defined earlier
                 "negative_prompt": SVD_NEGATIVE_PROMPT, # ADD THIS
                 "weight_dtype": "bf16",
+                "motion_bucket_id": 127,  # Controls motion amount; lower is usually more stable
+                "cond_aug": 0.02,
                 "use_frame_interpolation": False,
                 "fps": 15
             },
