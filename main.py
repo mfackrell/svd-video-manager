@@ -30,28 +30,105 @@ SVD_PROMPT = (
     "atmospheric depth, natural motion, no characters"
 )
 
-def process_boomerang_final(bucket, root_id, chunk_path):
+SLOW_MO_FACTOR = float(os.environ.get("SLOW_MO_FACTOR", "3.0"))
+SLOW_MO_OUTPUT_FPS = int(os.environ.get("SLOW_MO_OUTPUT_FPS", "15"))
+SLOW_MO_INTERPOLATION_MODE = os.environ.get("SLOW_MO_INTERPOLATION_MODE", "mci")
+
+
+def download_to_tempfile(bucket, remote_path, tmp_dir):
+    local_path = os.path.join(tmp_dir, os.path.basename(remote_path))
+    bucket.blob(remote_path).download_to_filename(local_path)
+    return local_path
+
+
+def download_optional_asset(bucket, tmp_dir, *, bucket_path=None, remote_url=None, filename=None):
+    if bucket_path and not str(bucket_path).startswith(("http://", "https://")):
+        return download_to_tempfile(bucket, bucket_path, tmp_dir)
+
+    remote_url = remote_url or bucket_path
+    if not remote_url:
+        return None
+
+    response = requests.get(remote_url, timeout=60)
+    response.raise_for_status()
+
+    resolved_name = filename or os.path.basename(remote_url) or str(uuid.uuid4())
+    local_path = os.path.join(tmp_dir, resolved_name)
+    with open(local_path, "wb") as handle:
+        handle.write(response.content)
+    return local_path
+
+
+
+def build_ffmpeg_command(raw_video_path, final_render_path, *, audio_path=None, text_overlay_path=None):
+    filter_chain = (
+        f"[0:v]setpts={SLOW_MO_FACTOR}*PTS,"
+        f"minterpolate=fps={SLOW_MO_OUTPUT_FPS}:mi_mode={SLOW_MO_INTERPOLATION_MODE}"
+        "[bg]"
+    )
+    map_args = ["-map", "[bg]"]
+    input_args = ["-i", raw_video_path]
+
+    if audio_path:
+        input_args.extend(["-i", audio_path])
+        map_args = ["-map", "[v]", "-map", "1:a"]
+
+    if text_overlay_path:
+        input_args.extend(["-i", text_overlay_path])
+        overlay_input_index = 2 if audio_path else 1
+        filter_chain = (
+            f"{filter_chain};"
+            f"[bg][{overlay_input_index}:v]overlay=x=(W-w)/2:y=(H-h)/2[v]"
+        )
+        if not audio_path:
+            map_args = ["-map", "[v]"]
+
+    command = [
+        "ffmpeg", "-y",
+        *input_args,
+        "-filter_complex", filter_chain,
+        *map_args,
+        "-pix_fmt", "yuv420p",
+        "-r", str(SLOW_MO_OUTPUT_FPS),
+        "-c:v", "libx264",
+        "-crf", "18",
+    ]
+
+    if audio_path:
+        command.extend(["-c:a", "aac", "-shortest"])
+
+    command.append(final_render_path)
+    return command
+
+
+
+def process_slowmo_final(bucket, root_id, chunk_path, *, audio_path=None, text_overlay_path=None):
     with tempfile.TemporaryDirectory() as tmp:
-        local_path = os.path.join(tmp, "chunk_0.mp4")
-        bucket.blob(chunk_path).download_to_filename(local_path)
+        local_video_path = download_to_tempfile(bucket, chunk_path, tmp)
+        local_audio_path = download_optional_asset(
+            bucket,
+            tmp,
+            bucket_path=audio_path,
+            remote_url=audio_path if audio_path and audio_path.startswith("http") else None,
+            filename="audio_track",
+        ) if audio_path else None
+        local_text_overlay_path = download_optional_asset(
+            bucket,
+            tmp,
+            bucket_path=text_overlay_path,
+            remote_url=text_overlay_path if text_overlay_path and text_overlay_path.startswith("http") else None,
+            filename="text_overlay.png",
+        ) if text_overlay_path else None
 
         final_render_path = os.path.join(tmp, "final.mp4")
-
-        subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", local_path,
-                "-filter_complex",
-                "[0:v]reverse[r];[0:v][r][0:v]concat=n=3:v=1:a=0[vfinal]",
-                "-map", "[vfinal]",
-                "-pix_fmt", "yuv420p",
-                "-r", "15",
-                "-c:v", "libx264",
-                "-crf", "18",
-                final_render_path,
-            ],
-            check=True,
+        ffmpeg_command = build_ffmpeg_command(
+            local_video_path,
+            final_render_path,
+            audio_path=local_audio_path,
+            text_overlay_path=local_text_overlay_path,
         )
+
+        subprocess.run(ffmpeg_command, check=True)
 
         final_path = f"videos/{root_id}/final.mp4"
         bucket.blob(final_path).upload_from_filename(
@@ -62,17 +139,27 @@ def process_boomerang_final(bucket, root_id, chunk_path):
         return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{final_path}"
 
 
+
 def start_svd_base_video(data, bucket):
     image_url = data["image_url"]
 
     root_id = uuid.uuid4().hex
-    
+
     job = {
         "status": "PENDING",
         "root_id": root_id,
         "started_at": time.time(),
         "source_image_url": image_url
     }
+
+    for optional_field in (
+        "audio_path",
+        "audio_url",
+        "text_overlay_path",
+        "text_overlay_url",
+    ):
+        if data.get(optional_field):
+            job[optional_field] = data[optional_field]
 
     bucket.blob(f"jobs/{root_id}.json").upload_from_string(json.dumps(job))
 
@@ -119,7 +206,7 @@ def svd_video_manager(request):
         root_id = request.args.get("root_id")
         if not root_id:
             return {"error": "missing root_id"}, 400
-    
+
         job_blob = bucket.blob(f"jobs/{root_id}.json")
         job = json.loads(job_blob.download_as_text())
 
@@ -128,21 +215,21 @@ def svd_video_manager(request):
             return {
                 "status": "COMPLETE",
                 "final_video_url": job.get("final_video_url")
-            }, 200            
-    
+            }, 200
+
         job["status"] = "FAILED"
         job["error"] = data.get("error")
         job["failed_at"] = time.time()
-    
+
         job_blob.upload_from_string(json.dumps(job))
-    
+
         # IMPORTANT: return 200 so RunPod stops retrying
         return {
             "status": "failed",
             "error": data.get("error")
         }, 200
 
-    
+
     # ---- RUNPOD CALLBACK
     if data.get("status") == "COMPLETED" or "output" in data:
         root_id = request.args.get("root_id")
@@ -151,7 +238,7 @@ def svd_video_manager(request):
 
         job_blob = bucket.blob(f"jobs/{root_id}.json")
         job = json.loads(job_blob.download_as_text())
-        
+
         # ---- HARD STOP: job already completed (idempotency guard)
         if job.get("status") == "COMPLETE":
             return {
@@ -172,7 +259,13 @@ def svd_video_manager(request):
         job["status"] = "FINALIZING"
         job_blob.upload_from_string(json.dumps(job))
 
-        final_url = process_boomerang_final(bucket, root_id, chunk_path)
+        final_url = process_slowmo_final(
+            bucket,
+            root_id,
+            chunk_path,
+            audio_path=job.get("audio_path") or job.get("audio_url"),
+            text_overlay_path=job.get("text_overlay_path") or job.get("text_overlay_url"),
+        )
 
         job["status"] = "COMPLETE"
         job["final_video_url"] = final_url
