@@ -14,8 +14,6 @@ from google.cloud import storage
 
 print(subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True).stdout)
 
-CHUNK_FRAMES = 30
-TOTAL_LOOPS = 3
 VIDEO_BUCKET = "ssm-video-engine-output"
 
 SVD_ENDPOINT_ID = os.environ.get("SVD_ENDPOINT_ID")
@@ -32,68 +30,34 @@ SVD_PROMPT = (
     "atmospheric depth, natural motion, no characters"
 )
 
-def extract_last_frame_png(video_bytes):
+def process_boomerang_final(bucket, root_id, chunk_path):
     with tempfile.TemporaryDirectory() as tmp:
-        in_path = os.path.join(tmp, "chunk.mp4")
-        out_path = os.path.join(tmp, "last.png")
+        local_path = os.path.join(tmp, "chunk_0.mp4")
+        bucket.blob(chunk_path).download_to_filename(local_path)
 
-        with open(in_path, "wb") as f:
-            f.write(video_bytes)
-
-        subprocess.run(
-            ["ffmpeg", "-y", "-sseof", "-1", "-i", in_path, "-frames:v", "1", out_path],
-            check=True
-        )
-
-        with open(out_path, "rb") as f:
-            return f.read()
-
-
-def stitch_chunks_to_final(bucket, root_id, chunk_paths):
-    with tempfile.TemporaryDirectory() as tmp:
-        local_paths = []
-
-        for i, chunk_path in enumerate(chunk_paths):
-            local_path = os.path.join(tmp, f"chunk_{i}.mp4")
-            bucket.blob(chunk_path).download_to_filename(local_path)
-            local_paths.append(local_path)
-
-        list_path = os.path.join(tmp, "list.txt")
-        with open(list_path, "w", encoding="utf-8") as f:
-            for p in local_paths:
-                f.write(f"file '{p}'\n")
-
-        # --- stage 2: REAL final render (this is the missing piece)
         final_render_path = os.path.join(tmp, "final.mp4")
 
-        fade_duration = 0.5
-        offset = 1.5
-        
         subprocess.run(
             [
                 "ffmpeg", "-y",
-                "-i", local_paths[0],
-                "-i", local_paths[1],
-                "-i", local_paths[2],
-                "-filter_complex", 
-                f"[0:v][1:v]xfade=transition=fade:duration={fade_duration}:offset={offset}[v1]; "
-                f"[v1][2:v]xfade=transition=fade:duration={fade_duration}:offset={offset+1.5}[vfinal]",
+                "-i", local_path,
+                "-filter_complex",
+                "[0:v]reverse[r];[0:v][r][0:v]concat=n=3:v=1:a=0[vfinal]",
                 "-map", "[vfinal]",
                 "-pix_fmt", "yuv420p",
                 "-r", "15",
                 "-c:v", "libx264",
                 "-crf", "18",
-                final_render_path
+                final_render_path,
             ],
-            check=True
+            check=True,
         )
-        
+
         final_path = f"videos/{root_id}/final.mp4"
         bucket.blob(final_path).upload_from_filename(
             final_render_path,
             content_type="video/mp4"
         )
-
 
         return f"https://storage.googleapis.com/{VIDEO_BUCKET}/{final_path}"
 
@@ -107,9 +71,7 @@ def start_svd_base_video(data, bucket):
         "status": "PENDING",
         "root_id": root_id,
         "started_at": time.time(),
-        "current_image_url": image_url,
-        "loop": 0,
-        "chunks": []
+        "source_image_url": image_url
     }
 
     bucket.blob(f"jobs/{root_id}.json").upload_from_string(json.dumps(job))
@@ -204,68 +166,22 @@ def svd_video_manager(request):
 
         video_bytes = base64.b64decode(video_b64)
 
-        loop = job["loop"]
-
-        chunk_path = f"videos/{root_id}/chunk_{loop}.mp4"
+        chunk_path = f"videos/{root_id}/chunk_0.mp4"
         bucket.blob(chunk_path).upload_from_string(video_bytes, content_type="video/mp4")
-        job["chunks"].append(chunk_path)
 
-        last_frame_bytes = extract_last_frame_png(video_bytes)
-        frame_path = f"images/{root_id}/last_frame_{loop}.png"
-        bucket.blob(frame_path).upload_from_string(last_frame_bytes, content_type="image/png")
+        job["status"] = "FINALIZING"
+        job_blob.upload_from_string(json.dumps(job))
 
-        job["current_image_url"] = f"https://storage.googleapis.com/{VIDEO_BUCKET}/{frame_path}"
-        job["loop"] = loop + 1
+        final_url = process_boomerang_final(bucket, root_id, chunk_path)
 
-        if job["loop"] >= TOTAL_LOOPS:
-            # mark finalization phase BEFORE heavy FFmpeg
-            job["status"] = "FINALIZING"
-            job_blob.upload_from_string(json.dumps(job))
-        
-            final_url = stitch_chunks_to_final(
-                bucket, root_id, job["chunks"]
-            )
-        
-            job["status"] = "COMPLETE"
-            job["final_video_url"] = final_url
-            job_blob.upload_from_string(json.dumps(job))
-        
-            return {
-                "status": "COMPLETE",
-                "final_video_url": final_url
-            }, 200
+        job["status"] = "COMPLETE"
+        job["final_video_url"] = final_url
+        job_blob.upload_from_string(json.dumps(job))
 
-        # --- Update the payload in the svd_video_manager function (around line 170) ---
-        payload = {
-            "input": {
-                "image_url": job["current_image_url"], 
-                "steps": 20,
-                "prompt": SVD_PROMPT,          # ADD THIS: Use the variables defined earlier
-                "negative_prompt": SVD_NEGATIVE_PROMPT, # ADD THIS
-                "weight_dtype": "bf16",
-                "motion_bucket_id": 127,  # Controls motion amount; lower is usually more stable
-                "cond_aug": 0.02,
-                "use_frame_interpolation": False,
-                "fps": 15
-            },
-            "webhook": f"{SELF_URL}?root_id={root_id}"
-        }
-
-        requests.post(
-            f"https://api.runpod.ai/v2/{SVD_ENDPOINT_ID}/run",
-            headers={
-                "Authorization": f"Bearer {RUNPOD_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=30
-        )
-
-        # only persist looping state if job is NOT complete
-        if job.get("status") != "COMPLETE":
-            job_blob.upload_from_string(json.dumps(job))
-        
-        return {"status": "looping", "loop": job["loop"]}, 200
+        return {
+            "status": "COMPLETE",
+            "final_video_url": final_url
+        }, 200
 
 
     # ---- INITIAL BASE VIDEO REQUEST
