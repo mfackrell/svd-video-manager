@@ -168,6 +168,8 @@ def start_svd_base_video(data, bucket):
             "image_url": image_url,
             "steps": 20,
             "prompt": SVD_PROMPT,
+            "width": 1344,
+            "height": 768,
             "motion_bucket_id": 127,  # Controls motion amount; lower is usually more stable
             "cond_aug": 0.02,
             "negative_prompt": SVD_NEGATIVE_PROMPT
